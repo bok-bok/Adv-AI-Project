@@ -62,6 +62,11 @@ def add_observation_noise(state, noise: str):
         standard_deviation = 0.5
         boolean_flip_prob = 0.01
     
+    elif noise == "level_4":
+        mean = 0.0
+        standard_deviation = 1.0
+        boolean_flip_prob = 0.02
+    
     else:
         raise ValueError(f"Unsupported noise mode: {noise}")
     
@@ -122,12 +127,12 @@ def evaluate_ppo(env, agent: PPOAgent, num_episodes: int, noise: str = "none"):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a saved DQN or PPO model.")
-    parser.add_argument("--algo", default="ppo", choices=["dqn", "ppo"])
-    parser.add_argument("-c", "--checkpoint", default="results/ppo/model.pt", help="Path to saved model .pt file")
+    parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
+    parser.add_argument("-c", "--checkpoint", default="results/dqn/model.pt", help="Path to saved model .pt file")
     parser.add_argument("--env", default="LunarLander-v3")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--render", action="store_true", help="Render the environment")
-    parser.add_argument("--noise", default="level_1", choices=["none", "level_1"], help="Observation noise mode")
+    parser.add_argument("--noise", default="level_4", choices=["none", "level_1"], help="Observation noise mode")
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 
