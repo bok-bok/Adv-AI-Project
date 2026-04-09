@@ -1,12 +1,11 @@
 """
-train.py — CLI runner for DQN and PPO on LunarLander-v3 (or any Gymnasium env).
+train.py — Script runner for DQN and PPO on LunarLander-v3 (or any Gymnasium env).
 
 Usage:
-    python train.py --algo dqn --episodes 600 --seed 42
-    python train.py --algo ppo --epochs 150 --seed 42
+    1. Edit the configuration variables below.
+    2. Run: python train.py
 """
 
-import argparse
 import os
 import random
 from itertools import count
@@ -235,87 +234,87 @@ def _save_plot(data, title, xlabel, ylabel, path):
     print(f"  Plot saved to {path}")
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train DQN or PPO on a Gymnasium environment.")
-    parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
-    parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("-e", "--episodes", type=int, default=10, help="DQN: number of episodes")
-    parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
-    parser.add_argument("--noise", default="none", choices=evaluate_utils.NOISE_CHOICES, help="Observation noise mode")
-    # DQN hyperparams
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--gamma", type=float, default=0.99)
-    parser.add_argument("--eps-decay", type=int, default=2500)
-    parser.add_argument("--tau", type=float, default=0.005)
-    parser.add_argument("--dqn-lr", type=float, default=3e-4)
-    # PPO hyperparams
-    parser.add_argument("--steps-per-epoch", type=int, default=8000)
-    parser.add_argument("--clip-ratio", type=float, default=0.2)
-    parser.add_argument("--pi-lr", type=float, default=3e-4)
-    parser.add_argument("--vf-lr", type=float, default=1e-3)
-    parser.add_argument("--target-kl", type=float, default=0.01)
-    parser.add_argument("--entropy-coeff", type=float, default=0.01)
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
+    # -----------------------------------------------------------------------
+    # Configuration
+    # -----------------------------------------------------------------------
+    ALGO = "dqn"
+    ENV_NAME = "LunarLander-v3"
+    SEED = 42
+    SAVE_DIR = None
+    NOISE = "none"
+
+    # DQN settings
+    DQN_EPISODES = 600
+    DQN_BATCH_SIZE = 128
+    DQN_GAMMA = 0.99
+    DQN_EPS_DECAY = 2500
+    DQN_TAU = 0.005
+    DQN_LR = 3e-4
+
+    # PPO settings
+    PPO_GAMMA = 0.99
+    PPO_EPOCHS = 300
+    PPO_STEPS_PER_EPOCH = 8000
+    PPO_CLIP_RATIO = 0.2
+    PPO_PI_LR = 3e-4
+    PPO_VF_LR = 1e-3
+    PPO_TARGET_KL = 0.01
+    PPO_ENTROPY_COEFF = 0.01
+
+    if ALGO not in {"dqn", "ppo"}:
+        raise ValueError(f"Unsupported ALGO: {ALGO}")
+    if NOISE not in evaluate_utils.NOISE_CHOICES:
+        raise ValueError(f"Unsupported NOISE: {NOISE}")
 
     # Reproducibility
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(args.seed)
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
+    evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(SEED)
 
-    device = get_device(args.algo)
+    device = get_device(ALGO)
     print(f"Using device: {device}")
 
-    save_dir = args.save_dir or os.path.join("weights", args.algo)
+    save_dir = SAVE_DIR or os.path.join("weights", ALGO)
 
-    env = make_env(args.env, args.seed)
+    env = make_env(ENV_NAME, SEED)
 
-    if args.algo == "dqn":
+    if ALGO == "dqn":
         obs_dim = env.observation_space.shape[0]
         act_dim = env.action_space.n
         agent = DQNAgent(
             obs_dim,
             act_dim,
             device,
-            batch_size=args.batch_size,
-            gamma=args.gamma,
-            eps_decay=args.eps_decay,
-            tau=args.tau,
-            lr=args.dqn_lr,
+            batch_size=DQN_BATCH_SIZE,
+            gamma=DQN_GAMMA,
+            eps_decay=DQN_EPS_DECAY,
+            tau=DQN_TAU,
+            lr=DQN_LR,
         )
-        config = dict(env=args.env, episodes=args.episodes)
-        train_dqn(env, agent, config, save_dir, args.noise)
+        config = dict(env=ENV_NAME, episodes=DQN_EPISODES)
+        train_dqn(env, agent, config, save_dir, NOISE)
 
     else:  # ppo
         agent = PPOAgent(
             env.observation_space,
             env.action_space,
             device,
-            gamma=args.gamma,
-            clip_ratio=args.clip_ratio,
-            pi_lr=args.pi_lr,
-            vf_lr=args.vf_lr,
-            target_kl=args.target_kl,
-            entropy_coeff=args.entropy_coeff,
-            steps_per_epoch=args.steps_per_epoch,
+            gamma=PPO_GAMMA,
+            clip_ratio=PPO_CLIP_RATIO,
+            pi_lr=PPO_PI_LR,
+            vf_lr=PPO_VF_LR,
+            target_kl=PPO_TARGET_KL,
+            entropy_coeff=PPO_ENTROPY_COEFF,
+            steps_per_epoch=PPO_STEPS_PER_EPOCH,
         )
         config = dict(
-            env=args.env,
-            epochs=args.epochs,
-            steps_per_epoch=args.steps_per_epoch,
+            env=ENV_NAME,
+            epochs=PPO_EPOCHS,
+            steps_per_epoch=PPO_STEPS_PER_EPOCH,
         )
-        train_ppo(env, agent, config, save_dir, args.noise)
+        train_ppo(env, agent, config, save_dir, NOISE)
 
     env.close()
 
