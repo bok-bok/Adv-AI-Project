@@ -19,6 +19,7 @@ from algorithms.ppo import PPOAgent
 ANGLE_MIN = -2 * np.pi
 ANGLE_MAX = 2 * np.pi
 OBSERVATION_NOISE_RNG = np.random.default_rng()
+NOISE_CHOICES = ["none", "level_1_shift", "level_1", "level_2", "level_3", "level_4"]
 
 
 def make_env(name: str, render: bool) -> gym.Env:
@@ -132,7 +133,7 @@ def parse_args():
     parser.add_argument("--env", default="LunarLander-v3")
     parser.add_argument("--episodes", type=int, default=100)
     parser.add_argument("--render", action="store_true", help="Render the environment")
-    parser.add_argument("--noise", default="level_4", choices=["none", "level_1"], help="Observation noise mode")
+    parser.add_argument("--noise", default="none", choices=NOISE_CHOICES, help="Observation noise mode")
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 

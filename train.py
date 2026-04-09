@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 
 from algorithms.dqn import DQNAgent
 from algorithms.ppo import PPOAgent, PPOBuffer
+import evaluate as evaluate_utils
 
 # ---------------------------------------------------------------------------
 # Environment helpers
@@ -51,21 +52,26 @@ def get_device(algo: str) -> torch.device:
 # ---------------------------------------------------------------------------
 
 
-def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str):
+def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, noise: str):
     num_episodes = config["episodes"]
     episode_rewards = []
+    noise_suffix = f"_{noise}"
 
-    print(f"[DQN] Training for {num_episodes} episodes on {config['env']}...")
+    print(f"[DQN] Training for {num_episodes} episodes on {config['env']} with noise='{noise}'...")
 
     pbar = tqdm(range(num_episodes), desc="DQN", unit="ep")
     for i_episode in pbar:
         state, _ = env.reset()
+        if noise != "none":
+            state = evaluate_utils.add_observation_noise(state, noise)
         state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0)
         total_reward = 0.0
 
         for _ in count():
             action = agent.select_action(state)
             obs, reward, terminated, truncated, _ = env.step(action.item())
+            if noise != "none":
+                obs = evaluate_utils.add_observation_noise(obs, noise)
             total_reward += reward
             done = terminated or truncated
 
@@ -89,17 +95,17 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str):
 
     # Save model
     os.makedirs(save_dir, exist_ok=True)
-    model_path = os.path.join(save_dir, "model.pt")
+    model_path = os.path.join(save_dir, f"model{noise_suffix}.pt")
     agent.save(model_path)
     print(f"[DQN] Model saved to {model_path}")
 
     # Save plot
     _save_plot(
         episode_rewards,
-        "DQN Training Rewards",
+        f"DQN Training Rewards ({noise})",
         "Episode",
         "Total Reward",
-        os.path.join(save_dir, "training_curve.png"),
+        os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
     )
 
     return episode_rewards
@@ -110,17 +116,20 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str):
 # ---------------------------------------------------------------------------
 
 
-def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str):
+def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
     num_epochs = config["epochs"]
     steps_per_epoch = config["steps_per_epoch"]
     obs_dim = env.observation_space.shape[0]
     # For discrete spaces, actions are scalars (act_shape=None); continuous: vector
     act_shape = agent.act_shape
+    noise_suffix = f"_{noise}"
 
     epoch_returns = []
-    print(f"[PPO] Training for {num_epochs} epochs ({steps_per_epoch} steps/epoch) on {config['env']}...")
+    print(f"[PPO] Training for {num_epochs} epochs ({steps_per_epoch} steps/epoch) on {config['env']} with noise='{noise}'...")
 
     obs, _ = env.reset()
+    if noise != "none":
+        obs = evaluate_utils.add_observation_noise(obs, noise)
     ep_ret = 0.0
     ep_len = 0
     episode_returns = []
@@ -140,6 +149,8 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str):
             a, v, logp = agent.step(obs_tensor)
 
             next_obs, reward, terminated, truncated, _ = env.step(int(a) if agent.discrete else a)
+            if noise != "none":
+                next_obs = evaluate_utils.add_observation_noise(next_obs, noise)
             ep_ret += reward
             ep_len += 1
             done = terminated or truncated
@@ -164,6 +175,8 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str):
 
                 buf.finish_path(last_val)
                 obs, _ = env.reset()
+                if noise != "none":
+                    obs = evaluate_utils.add_observation_noise(obs, noise)
                 ep_ret = 0.0
                 ep_len = 0
 
@@ -184,17 +197,17 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str):
 
     # Save model
     os.makedirs(save_dir, exist_ok=True)
-    model_path = os.path.join(save_dir, "model.pt")
+    model_path = os.path.join(save_dir, f"model{noise_suffix}.pt")
     agent.save(model_path)
     print(f"[PPO] Model saved to {model_path}")
 
     # Save plot
     _save_plot(
         epoch_returns,
-        "PPO Training Returns",
+        f"PPO Training Returns ({noise})",
         "Epoch",
         "Mean Return",
-        os.path.join(save_dir, "training_curve.png"),
+        os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
     )
 
     return epoch_returns
@@ -235,6 +248,7 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
+    parser.add_argument("--noise", default="none", choices=evaluate_utils.NOISE_CHOICES, help="Observation noise mode")
     # DQN hyperparams
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -258,6 +272,7 @@ def main():
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
+    evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(args.seed)
 
     device = get_device(args.algo)
     print(f"Using device: {device}")
@@ -280,7 +295,7 @@ def main():
             lr=args.dqn_lr,
         )
         config = dict(env=args.env, episodes=args.episodes)
-        train_dqn(env, agent, config, save_dir)
+        train_dqn(env, agent, config, save_dir, args.noise)
 
     else:  # ppo
         agent = PPOAgent(
@@ -300,7 +315,7 @@ def main():
             epochs=args.epochs,
             steps_per_epoch=args.steps_per_epoch,
         )
-        train_ppo(env, agent, config, save_dir)
+        train_ppo(env, agent, config, save_dir, args.noise)
 
     env.close()
 
