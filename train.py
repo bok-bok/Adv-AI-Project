@@ -102,7 +102,7 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, noise: str):
     # Save plot
     _save_plot(
         episode_rewards,
-        f"DQN Training Rewards ({noise})",
+        f"DQN Training Rewards (Noise = {noise})",
         "Episode",
         "Total Reward",
         os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
@@ -204,7 +204,7 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
     # Save plot
     _save_plot(
         epoch_returns,
-        f"PPO Training Returns ({noise})",
+        f"PPO Training Returns (Noise = {noise})",
         "Epoch",
         "Mean Return",
         os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
