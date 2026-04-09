@@ -238,11 +238,11 @@ def main():
     # -----------------------------------------------------------------------
     # Configuration
     # -----------------------------------------------------------------------
-    ALGO = "dqn"
+    ALGO = "ppo"
     ENV_NAME = "LunarLander-v3"
     SEED = 42
     SAVE_DIR = None
-    NOISE = "none"
+    NOISE_LEVELS = evaluate_utils.NOISE_CHOICES
 
     # DQN settings
     DQN_EPISODES = 600
@@ -264,59 +264,69 @@ def main():
 
     if ALGO not in {"dqn", "ppo"}:
         raise ValueError(f"Unsupported ALGO: {ALGO}")
-    if NOISE not in evaluate_utils.NOISE_CHOICES:
-        raise ValueError(f"Unsupported NOISE: {NOISE}")
+    for noise in NOISE_LEVELS:
+        if noise not in evaluate_utils.NOISE_CHOICES:
+            raise ValueError(f"Unsupported NOISE: {noise}")
 
     # Reproducibility
     random.seed(SEED)
     np.random.seed(SEED)
     torch.manual_seed(SEED)
-    evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(SEED)
 
     device = get_device(ALGO)
     print(f"Using device: {device}")
 
     save_dir = SAVE_DIR or os.path.join("weights", ALGO)
 
-    env = make_env(ENV_NAME, SEED)
+    for noise_idx, noise in enumerate(NOISE_LEVELS):
+        print("-" * 60)
+        print(f"Starting {ALGO.upper()} training run {noise_idx + 1}/{len(NOISE_LEVELS)} with noise='{noise}'")
 
-    if ALGO == "dqn":
-        obs_dim = env.observation_space.shape[0]
-        act_dim = env.action_space.n
-        agent = DQNAgent(
-            obs_dim,
-            act_dim,
-            device,
-            batch_size=DQN_BATCH_SIZE,
-            gamma=DQN_GAMMA,
-            eps_decay=DQN_EPS_DECAY,
-            tau=DQN_TAU,
-            lr=DQN_LR,
-        )
-        config = dict(env=ENV_NAME, episodes=DQN_EPISODES)
-        train_dqn(env, agent, config, save_dir, NOISE)
+        run_seed = SEED + noise_idx
+        random.seed(run_seed)
+        np.random.seed(run_seed)
+        torch.manual_seed(run_seed)
+        evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(run_seed)
 
-    else:  # ppo
-        agent = PPOAgent(
-            env.observation_space,
-            env.action_space,
-            device,
-            gamma=PPO_GAMMA,
-            clip_ratio=PPO_CLIP_RATIO,
-            pi_lr=PPO_PI_LR,
-            vf_lr=PPO_VF_LR,
-            target_kl=PPO_TARGET_KL,
-            entropy_coeff=PPO_ENTROPY_COEFF,
-            steps_per_epoch=PPO_STEPS_PER_EPOCH,
-        )
-        config = dict(
-            env=ENV_NAME,
-            epochs=PPO_EPOCHS,
-            steps_per_epoch=PPO_STEPS_PER_EPOCH,
-        )
-        train_ppo(env, agent, config, save_dir, NOISE)
+        env = make_env(ENV_NAME, run_seed)
 
-    env.close()
+        if ALGO == "dqn":
+            obs_dim = env.observation_space.shape[0]
+            act_dim = env.action_space.n
+            agent = DQNAgent(
+                obs_dim,
+                act_dim,
+                device,
+                batch_size=DQN_BATCH_SIZE,
+                gamma=DQN_GAMMA,
+                eps_decay=DQN_EPS_DECAY,
+                tau=DQN_TAU,
+                lr=DQN_LR,
+            )
+            config = dict(env=ENV_NAME, episodes=DQN_EPISODES)
+            train_dqn(env, agent, config, save_dir, noise)
+
+        else:  # ppo
+            agent = PPOAgent(
+                env.observation_space,
+                env.action_space,
+                device,
+                gamma=PPO_GAMMA,
+                clip_ratio=PPO_CLIP_RATIO,
+                pi_lr=PPO_PI_LR,
+                vf_lr=PPO_VF_LR,
+                target_kl=PPO_TARGET_KL,
+                entropy_coeff=PPO_ENTROPY_COEFF,
+                steps_per_epoch=PPO_STEPS_PER_EPOCH,
+            )
+            config = dict(
+                env=ENV_NAME,
+                epochs=PPO_EPOCHS,
+                steps_per_epoch=PPO_STEPS_PER_EPOCH,
+            )
+            train_ppo(env, agent, config, save_dir, noise)
+
+        env.close()
 
 
 if __name__ == "__main__":

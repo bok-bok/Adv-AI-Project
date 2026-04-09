@@ -19,7 +19,7 @@ from algorithms.ppo import PPOAgent
 ANGLE_MIN = -2 * np.pi
 ANGLE_MAX = 2 * np.pi
 OBSERVATION_NOISE_RNG = np.random.default_rng()
-NOISE_CHOICES = ["none", "level_1_shift", "level_1", "level_2", "level_3", "level_4"]
+NOISE_CHOICES = ["level_05", "none", "level_1_shift", "level_1", "level_2", "level_3", "level_4"]
 
 
 def make_env(name: str, render: bool) -> gym.Env:
@@ -43,7 +43,12 @@ def wrap_angle(value: float) -> float:
 def add_observation_noise(state, noise: str):
     noisy_state = np.array(state, dtype=np.float32, copy=True)
 
-    if noise == "level_1_shift":
+    if noise == "level_05":
+        mean = 0.0
+        standard_deviation = 0.01
+        boolean_flip_prob = 0.00
+
+    elif noise == "level_1_shift":
         mean = 0.1
         standard_deviation = 0.1
         boolean_flip_prob = 0.01
