@@ -51,7 +51,7 @@ def get_device(algo: str) -> torch.device:
 # ---------------------------------------------------------------------------
 
 
-def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, no_plot: bool):
+def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str):
     num_episodes = config["episodes"]
     episode_rewards = []
 
@@ -110,7 +110,7 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, no_plot: bool):
 # ---------------------------------------------------------------------------
 
 
-def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, no_plot: bool):
+def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str):
     num_epochs = config["epochs"]
     steps_per_epoch = config["steps_per_epoch"]
     obs_dim = env.observation_space.shape[0]
@@ -234,8 +234,7 @@ def parse_args():
     parser.add_argument("-e", "--episodes", type=int, default=600, help="DQN: number of episodes")
     parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
-    parser.add_argument("--no-plot", action="store_true", help="Skip saving training curve")
+    parser.add_argument("--save-dir", default="weights", help="Directory to save model and plot")
     # DQN hyperparams
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -281,7 +280,7 @@ def main():
             lr=args.dqn_lr,
         )
         config = dict(env=args.env, episodes=args.episodes)
-        train_dqn(env, agent, config, save_dir, args.no_plot)
+        train_dqn(env, agent, config, save_dir)
 
     else:  # ppo
         agent = PPOAgent(
@@ -301,7 +300,7 @@ def main():
             epochs=args.epochs,
             steps_per_epoch=args.steps_per_epoch,
         )
-        train_ppo(env, agent, config, save_dir, args.no_plot)
+        train_ppo(env, agent, config, save_dir)
 
     env.close()
 
