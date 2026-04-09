@@ -244,7 +244,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Train DQN or PPO on a Gymnasium environment.")
     parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
     parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("-e", "--episodes", type=int, default=600, help="DQN: number of episodes")
+    parser.add_argument("-e", "--episodes", type=int, default=10, help="DQN: number of episodes")
     parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
