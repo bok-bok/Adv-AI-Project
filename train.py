@@ -217,7 +217,7 @@ def _save_plot(data, title, xlabel, ylabel, path):
     ax.set_ylabel(ylabel)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(path)
+    fig.savefig(path, dpi=600)
     plt.close(fig)
     print(f"  Plot saved to {path}")
 
@@ -229,12 +229,12 @@ def _save_plot(data, title, xlabel, ylabel, path):
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train DQN or PPO on a Gymnasium environment.")
-    parser.add_argument("--algo", choices=["dqn", "ppo"], required=True)
+    parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
     parser.add_argument("--env", default="LunarLander-v3")
     parser.add_argument("-e", "--episodes", type=int, default=600, help="DQN: number of episodes")
     parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save-dir", default="weights", help="Directory to save model and plot")
+    parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
     # DQN hyperparams
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--gamma", type=float, default=0.99)
@@ -262,7 +262,7 @@ def main():
     device = get_device(args.algo)
     print(f"Using device: {device}")
 
-    save_dir = args.save_dir or os.path.join("results", args.algo)
+    save_dir = args.save_dir or os.path.join("weights", args.algo)
 
     env = make_env(args.env, args.seed)
 
