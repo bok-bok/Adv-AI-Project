@@ -1,12 +1,11 @@
 """
-train.py — CLI runner for DQN and PPO on LunarLander-v3 (or any Gymnasium env).
+train.py — Script runner for DQN and PPO on LunarLander-v3 (or any Gymnasium env).
 
 Usage:
-    python train.py --algo dqn --episodes 600 --seed 42
-    python train.py --algo ppo --epochs 150 --seed 42
+    1. Edit the configuration variables below.
+    2. Run: python train.py
 """
 
-import argparse
 import os
 import random
 from itertools import count
@@ -22,6 +21,7 @@ import matplotlib.pyplot as plt
 
 from algorithms.dqn import DQNAgent
 from algorithms.ppo import PPOAgent, PPOBuffer
+import evaluate as evaluate_utils
 
 # ---------------------------------------------------------------------------
 # Environment helpers
@@ -51,21 +51,26 @@ def get_device(algo: str) -> torch.device:
 # ---------------------------------------------------------------------------
 
 
-def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, no_plot: bool):
+def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, noise: str):
     num_episodes = config["episodes"]
     episode_rewards = []
+    noise_suffix = f"_{noise}"
 
-    print(f"[DQN] Training for {num_episodes} episodes on {config['env']}...")
+    print(f"[DQN] Training for {num_episodes} episodes on {config['env']} with noise='{noise}'...")
 
     pbar = tqdm(range(num_episodes), desc="DQN", unit="ep")
     for i_episode in pbar:
         state, _ = env.reset()
+        if noise != "none":
+            state = evaluate_utils.add_observation_noise(state, noise)
         state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0)
         total_reward = 0.0
 
         for _ in count():
             action = agent.select_action(state)
             obs, reward, terminated, truncated, _ = env.step(action.item())
+            if noise != "none":
+                obs = evaluate_utils.add_observation_noise(obs, noise)
             total_reward += reward
             done = terminated or truncated
 
@@ -89,17 +94,17 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, no_plot: bool):
 
     # Save model
     os.makedirs(save_dir, exist_ok=True)
-    model_path = os.path.join(save_dir, "model.pt")
+    model_path = os.path.join(save_dir, f"model{noise_suffix}.pt")
     agent.save(model_path)
     print(f"[DQN] Model saved to {model_path}")
 
     # Save plot
     _save_plot(
         episode_rewards,
-        "DQN Training Rewards",
+        f"DQN Training Rewards (Noise = {noise})",
         "Episode",
         "Total Reward",
-        os.path.join(save_dir, "training_curve.png"),
+        os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
     )
 
     return episode_rewards
@@ -110,17 +115,20 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, no_plot: bool):
 # ---------------------------------------------------------------------------
 
 
-def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, no_plot: bool):
+def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
     num_epochs = config["epochs"]
     steps_per_epoch = config["steps_per_epoch"]
     obs_dim = env.observation_space.shape[0]
     # For discrete spaces, actions are scalars (act_shape=None); continuous: vector
     act_shape = agent.act_shape
+    noise_suffix = f"_{noise}"
 
     epoch_returns = []
-    print(f"[PPO] Training for {num_epochs} epochs ({steps_per_epoch} steps/epoch) on {config['env']}...")
+    print(f"[PPO] Training for {num_epochs} epochs ({steps_per_epoch} steps/epoch) on {config['env']} with noise='{noise}'...")
 
     obs, _ = env.reset()
+    if noise != "none":
+        obs = evaluate_utils.add_observation_noise(obs, noise)
     ep_ret = 0.0
     ep_len = 0
     episode_returns = []
@@ -140,6 +148,8 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, no_plot: bool):
             a, v, logp = agent.step(obs_tensor)
 
             next_obs, reward, terminated, truncated, _ = env.step(int(a) if agent.discrete else a)
+            if noise != "none":
+                next_obs = evaluate_utils.add_observation_noise(next_obs, noise)
             ep_ret += reward
             ep_len += 1
             done = terminated or truncated
@@ -164,6 +174,8 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, no_plot: bool):
 
                 buf.finish_path(last_val)
                 obs, _ = env.reset()
+                if noise != "none":
+                    obs = evaluate_utils.add_observation_noise(obs, noise)
                 ep_ret = 0.0
                 ep_len = 0
 
@@ -184,17 +196,17 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, no_plot: bool):
 
     # Save model
     os.makedirs(save_dir, exist_ok=True)
-    model_path = os.path.join(save_dir, "model.pt")
+    model_path = os.path.join(save_dir, f"model{noise_suffix}.pt")
     agent.save(model_path)
     print(f"[PPO] Model saved to {model_path}")
 
     # Save plot
     _save_plot(
         epoch_returns,
-        "PPO Training Returns",
+        f"PPO Training Returns (Noise = {noise})",
         "Epoch",
         "Mean Return",
-        os.path.join(save_dir, "training_curve.png"),
+        os.path.join(save_dir, f"training_curve{noise_suffix}.png"),
     )
 
     return epoch_returns
@@ -217,93 +229,104 @@ def _save_plot(data, title, xlabel, ylabel, path):
     ax.set_ylabel(ylabel)
     ax.legend()
     fig.tight_layout()
-    fig.savefig(path)
+    fig.savefig(path, dpi=600)
     plt.close(fig)
     print(f"  Plot saved to {path}")
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Train DQN or PPO on a Gymnasium environment.")
-    parser.add_argument("--algo", choices=["dqn", "ppo"], required=True)
-    parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("-e", "--episodes", type=int, default=600, help="DQN: number of episodes")
-    parser.add_argument("--epochs", type=int, default=300, help="PPO: number of epochs")
-    parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--save-dir", default=None, help="Directory to save model and plot")
-    parser.add_argument("--no-plot", action="store_true", help="Skip saving training curve")
-    # DQN hyperparams
-    parser.add_argument("--batch-size", type=int, default=128)
-    parser.add_argument("--gamma", type=float, default=0.99)
-    parser.add_argument("--eps-decay", type=int, default=2500)
-    parser.add_argument("--tau", type=float, default=0.005)
-    parser.add_argument("--dqn-lr", type=float, default=3e-4)
-    # PPO hyperparams
-    parser.add_argument("--steps-per-epoch", type=int, default=8000)
-    parser.add_argument("--clip-ratio", type=float, default=0.2)
-    parser.add_argument("--pi-lr", type=float, default=3e-4)
-    parser.add_argument("--vf-lr", type=float, default=1e-3)
-    parser.add_argument("--target-kl", type=float, default=0.01)
-    parser.add_argument("--entropy-coeff", type=float, default=0.01)
-    return parser.parse_args()
-
-
 def main():
-    args = parse_args()
+    # -----------------------------------------------------------------------
+    # Configuration
+    # -----------------------------------------------------------------------
+    ALGO = "ppo"
+    ENV_NAME = "LunarLander-v3"
+    SEED = 42
+    SAVE_DIR = None
+    NOISE_LEVELS = evaluate_utils.NOISE_CHOICES
+
+    # DQN settings
+    DQN_EPISODES = 600
+    DQN_BATCH_SIZE = 128
+    DQN_GAMMA = 0.99
+    DQN_EPS_DECAY = 2500
+    DQN_TAU = 0.005
+    DQN_LR = 3e-4
+
+    # PPO settings
+    PPO_GAMMA = 0.99
+    PPO_EPOCHS = 300
+    PPO_STEPS_PER_EPOCH = 8000
+    PPO_CLIP_RATIO = 0.2
+    PPO_PI_LR = 3e-4
+    PPO_VF_LR = 1e-3
+    PPO_TARGET_KL = 0.01
+    PPO_ENTROPY_COEFF = 0.01
+
+    if ALGO not in {"dqn", "ppo"}:
+        raise ValueError(f"Unsupported ALGO: {ALGO}")
+    for noise in NOISE_LEVELS:
+        if noise not in evaluate_utils.NOISE_CHOICES:
+            raise ValueError(f"Unsupported NOISE: {noise}")
 
     # Reproducibility
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
+    random.seed(SEED)
+    np.random.seed(SEED)
+    torch.manual_seed(SEED)
 
-    device = get_device(args.algo)
+    device = get_device(ALGO)
     print(f"Using device: {device}")
 
-    save_dir = args.save_dir or os.path.join("results", args.algo)
+    save_dir = SAVE_DIR or os.path.join("weights", ALGO)
 
-    env = make_env(args.env, args.seed)
+    for noise_idx, noise in enumerate(NOISE_LEVELS):
+        print("-" * 60)
+        print(f"Starting {ALGO.upper()} training run {noise_idx + 1}/{len(NOISE_LEVELS)} with noise='{noise}'")
 
-    if args.algo == "dqn":
-        obs_dim = env.observation_space.shape[0]
-        act_dim = env.action_space.n
-        agent = DQNAgent(
-            obs_dim,
-            act_dim,
-            device,
-            batch_size=args.batch_size,
-            gamma=args.gamma,
-            eps_decay=args.eps_decay,
-            tau=args.tau,
-            lr=args.dqn_lr,
-        )
-        config = dict(env=args.env, episodes=args.episodes)
-        train_dqn(env, agent, config, save_dir, args.no_plot)
+        run_seed = SEED + noise_idx
+        random.seed(run_seed)
+        np.random.seed(run_seed)
+        torch.manual_seed(run_seed)
+        evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(run_seed)
 
-    else:  # ppo
-        agent = PPOAgent(
-            env.observation_space,
-            env.action_space,
-            device,
-            gamma=args.gamma,
-            clip_ratio=args.clip_ratio,
-            pi_lr=args.pi_lr,
-            vf_lr=args.vf_lr,
-            target_kl=args.target_kl,
-            entropy_coeff=args.entropy_coeff,
-            steps_per_epoch=args.steps_per_epoch,
-        )
-        config = dict(
-            env=args.env,
-            epochs=args.epochs,
-            steps_per_epoch=args.steps_per_epoch,
-        )
-        train_ppo(env, agent, config, save_dir, args.no_plot)
+        env = make_env(ENV_NAME, run_seed)
 
-    env.close()
+        if ALGO == "dqn":
+            obs_dim = env.observation_space.shape[0]
+            act_dim = env.action_space.n
+            agent = DQNAgent(
+                obs_dim,
+                act_dim,
+                device,
+                batch_size=DQN_BATCH_SIZE,
+                gamma=DQN_GAMMA,
+                eps_decay=DQN_EPS_DECAY,
+                tau=DQN_TAU,
+                lr=DQN_LR,
+            )
+            config = dict(env=ENV_NAME, episodes=DQN_EPISODES)
+            train_dqn(env, agent, config, save_dir, noise)
+
+        else:  # ppo
+            agent = PPOAgent(
+                env.observation_space,
+                env.action_space,
+                device,
+                gamma=PPO_GAMMA,
+                clip_ratio=PPO_CLIP_RATIO,
+                pi_lr=PPO_PI_LR,
+                vf_lr=PPO_VF_LR,
+                target_kl=PPO_TARGET_KL,
+                entropy_coeff=PPO_ENTROPY_COEFF,
+                steps_per_epoch=PPO_STEPS_PER_EPOCH,
+            )
+            config = dict(
+                env=ENV_NAME,
+                epochs=PPO_EPOCHS,
+                steps_per_epoch=PPO_STEPS_PER_EPOCH,
+            )
+            train_ppo(env, agent, config, save_dir, noise)
+
+        env.close()
 
 
 if __name__ == "__main__":
