@@ -7,3 +7,7 @@ algorithms/__pycache__/__init__.cpython-312.pyc
 
 # ignore .vscode settings
 .vscode/
+algorithms/__pycache__/__init__.cpython-312.pyc
+networks/__pycache__/core.cpython-312.pyc
+networks/__pycache__/__init__.cpython-312.pyc
+algorithms/__pycache__/ppo.cpython-312.pyc
