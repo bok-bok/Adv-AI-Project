@@ -2,14 +2,16 @@
 evaluate.py — Load a saved model and run N evaluation episodes.
 
 Usage:
-    python evaluate.py --algo dqn --checkpoint ./results/dqn/model.pt --episodes 100
-    python evaluate.py --algo ppo --checkpoint ./results/ppo/model.pt --episodes 100
-    python evaluate.py --algo dqn --checkpoint ./results/dqn/model.pt --episodes 5 --render
+    python evaluate.py --algo dqn --episodes 100 --render none
+    python evaluate.py --algo ppo --episodes 100 --render human
+    python evaluate.py --algo dqn --episodes 5 --render mp4
 """
 
 import argparse
+from pathlib import Path
 
 import gymnasium as gym
+import imageio.v2 as imageio
 import numpy as np
 import torch
 
@@ -20,11 +22,42 @@ ANGLE_MIN = -2 * np.pi
 ANGLE_MAX = 2 * np.pi
 OBSERVATION_NOISE_RNG = np.random.default_rng()
 NOISE_CHOICES = ["level_05", "none", "level_1_shift", "level_1", "level_2", "level_3", "level_4"]
+RENDER_CHOICES = ["none", "human", "mp4"]
+DEFAULT_VIDEO_FPS = 30
+VIDEO_OUTPUT_DIR = Path("videos")
 
 
-def make_env(name: str, render: bool) -> gym.Env:
-    render_mode = "human" if render else None
+def make_env(name: str, render: str) -> gym.Env:
+    if render == "human":
+        render_mode = "human"
+    elif render == "mp4":
+        render_mode = "rgb_array"
+    else:
+        render_mode = None
     return gym.make(name, render_mode=render_mode)
+
+
+def video_output_path(algo: str, env_name: str, noise: str) -> Path:
+    VIDEO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    return VIDEO_OUTPUT_DIR / f"{algo}_{env_name}_{noise}.mp4"
+
+
+class VideoRecorder:
+    def __init__(self, path: Path, fps: int):
+        self.path = path
+        self.fps = fps
+        self.frames = []
+
+    def add_frame(self, frame) -> None:
+        if frame is not None:
+            self.frames.append(np.asarray(frame))
+
+    def save(self) -> None:
+        if not self.frames:
+            return
+        with  imageio.get_writer(self.path, fps=self.fps, format="FFMPEG") as writer:
+            for frame in self.frames:
+                writer.append_data(frame)
 
 
 def get_device() -> torch.device:
@@ -87,10 +120,12 @@ def add_observation_noise(state, noise: str):
     return noisy_state
 
 
-def evaluate_dqn(env, agent: DQNAgent, num_episodes: int, noise: str = "none"):
+def evaluate_dqn(env, agent: DQNAgent, num_episodes: int, noise: str = "none", recorder: VideoRecorder | None = None):
     rewards = []
     for ep in range(num_episodes):
         obs, _ = env.reset()
+        if recorder is not None:
+            recorder.add_frame(env.render())
         if noise != "none":
             obs = add_observation_noise(obs, noise)
         state = torch.tensor(obs, dtype=torch.float32, device=agent.device).unsqueeze(0)
@@ -99,6 +134,8 @@ def evaluate_dqn(env, agent: DQNAgent, num_episodes: int, noise: str = "none"):
         while not done:
             action = agent.select_action_greedy(state)
             obs, reward, terminated, truncated, _ = env.step(action.item())
+            if recorder is not None:
+                recorder.add_frame(env.render())
             if noise != "none":
                 obs = add_observation_noise(obs, noise)
             total_reward += reward
@@ -110,10 +147,12 @@ def evaluate_dqn(env, agent: DQNAgent, num_episodes: int, noise: str = "none"):
     return rewards
 
 
-def evaluate_ppo(env, agent: PPOAgent, num_episodes: int, noise: str = "none"):
+def evaluate_ppo(env, agent: PPOAgent, num_episodes: int, noise: str = "none", recorder: VideoRecorder | None = None):
     rewards = []
     for ep in range(num_episodes):
         obs, _ = env.reset()
+        if recorder is not None:
+            recorder.add_frame(env.render())
         if noise != "none":
             obs = add_observation_noise(obs, noise)
         total_reward = 0.0
@@ -122,6 +161,8 @@ def evaluate_ppo(env, agent: PPOAgent, num_episodes: int, noise: str = "none"):
             obs_tensor = torch.as_tensor(obs, dtype=torch.float32)
             action = agent.act_deterministic(obs_tensor)
             obs, reward, terminated, truncated, _ = env.step(action)
+            if recorder is not None:
+                recorder.add_frame(env.render())
             if noise != "none":
                 obs = add_observation_noise(obs, noise)
             total_reward += reward
@@ -134,10 +175,10 @@ def evaluate_ppo(env, agent: PPOAgent, num_episodes: int, noise: str = "none"):
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a saved DQN or PPO model.")
     parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
-    parser.add_argument("-c", "--checkpoint", default="results/dqn/model.pt", help="Path to saved model .pt file")
+    # parser.add_argument("-c", "--checkpoint", default="weights/dqn/model_none.pt", help="Path to saved model .pt file")
     parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("--episodes", type=int, default=100)
-    parser.add_argument("--render", action="store_true", help="Render the environment")
+    parser.add_argument("--episodes", type=int, default=5)
+    parser.add_argument("--render", default="mp4", choices=RENDER_CHOICES, help="Render mode")
     parser.add_argument("--noise", default="none", choices=NOISE_CHOICES, help="Observation noise mode")
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
@@ -147,28 +188,40 @@ def main():
     global OBSERVATION_NOISE_RNG
 
     args = parse_args()
+
+    # checkpoint = f"weights/{args.algo}/model_{args.noise}.pt"
+    checkpoint = f"weights/{args.algo}/model_none.pt"
+
     device = get_device()
     OBSERVATION_NOISE_RNG = np.random.default_rng(args.seed)
     env = make_env(args.env, args.render)
     env.reset(seed=args.seed)
+    recorder = None
+    video_path = None
 
-    print(f"Evaluating {args.algo.upper()} checkpoint: {args.checkpoint}")
-    print(f"Environment: {args.env} | Episodes: {args.episodes}")
+    if args.render == "mp4":
+        video_path = video_output_path(args.algo, args.env, args.noise)
+        recorder = VideoRecorder(video_path, fps=DEFAULT_VIDEO_FPS)
+
+    print(f"Evaluating {args.algo.upper()} checkpoint: {checkpoint}")
+    print(f"Environment: {args.env} | Episodes: {args.episodes} | Render: {args.render}")
     print("-" * 50)
 
     if args.algo == "dqn":
         obs_dim = env.observation_space.shape[0]
         act_dim = env.action_space.n
         agent = DQNAgent(obs_dim, act_dim, device)
-        agent.load(args.checkpoint)
-        rewards = evaluate_dqn(env, agent, args.episodes, noise=args.noise)
+        agent.load(checkpoint)
+        rewards = evaluate_dqn(env, agent, args.episodes, noise=args.noise, recorder=recorder)
 
     else:  # ppo
         agent = PPOAgent(env.observation_space, env.action_space, device)
-        agent.load(args.checkpoint)
-        rewards = evaluate_ppo(env, agent, args.episodes, noise=args.noise)
+        agent.load(checkpoint)
+        rewards = evaluate_ppo(env, agent, args.episodes, noise=args.noise, recorder=recorder)
 
     env.close()
+    if recorder is not None:
+        recorder.save()
 
     print("-" * 50)
     print(f"Results over {args.episodes} episodes:")
@@ -176,6 +229,8 @@ def main():
     print(f"  Std  reward : {np.std(rewards):.2f}")
     print(f"  Min  reward : {np.min(rewards):.2f}")
     print(f"  Max  reward : {np.max(rewards):.2f}")
+    if video_path is not None:
+        print(f"  Video saved : {video_path}")
 
 
 if __name__ == "__main__":
