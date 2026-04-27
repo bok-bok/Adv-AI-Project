@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 from algorithms.dqn import DQNAgent
 from algorithms.ppo import PPOAgent, PPOBuffer
-import evaluate as evaluate_utils
+import evaluate
 
 # ---------------------------------------------------------------------------
 # Environment helpers
@@ -62,7 +62,7 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, noise: str):
     for i_episode in pbar:
         state, _ = env.reset()
         if noise != "none":
-            state = evaluate_utils.add_observation_noise(state, noise)
+            state = evaluate.add_observation_noise(state, noise)
         state = torch.tensor(state, dtype=torch.float32, device=agent.device).unsqueeze(0)
         total_reward = 0.0
 
@@ -70,7 +70,7 @@ def train_dqn(env, agent: DQNAgent, config: dict, save_dir: str, noise: str):
             action = agent.select_action(state)
             obs, reward, terminated, truncated, _ = env.step(action.item())
             if noise != "none":
-                obs = evaluate_utils.add_observation_noise(obs, noise)
+                obs = evaluate.add_observation_noise(obs, noise)
             total_reward += reward
             done = terminated or truncated
 
@@ -128,7 +128,7 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
 
     obs, _ = env.reset()
     if noise != "none":
-        obs = evaluate_utils.add_observation_noise(obs, noise)
+        obs = evaluate.add_observation_noise(obs, noise)
     ep_ret = 0.0
     ep_len = 0
     episode_returns = []
@@ -149,7 +149,7 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
 
             next_obs, reward, terminated, truncated, _ = env.step(int(a) if agent.discrete else a)
             if noise != "none":
-                next_obs = evaluate_utils.add_observation_noise(next_obs, noise)
+                next_obs = evaluate.add_observation_noise(next_obs, noise)
             ep_ret += reward
             ep_len += 1
             done = terminated or truncated
@@ -175,7 +175,7 @@ def train_ppo(env, agent: PPOAgent, config: dict, save_dir: str, noise: str):
                 buf.finish_path(last_val)
                 obs, _ = env.reset()
                 if noise != "none":
-                    obs = evaluate_utils.add_observation_noise(obs, noise)
+                    obs = evaluate.add_observation_noise(obs, noise)
                 ep_ret = 0.0
                 ep_len = 0
 
@@ -242,7 +242,7 @@ def main():
     ENV_NAME = "LunarLander-v3"
     SEED = 42
     SAVE_DIR = None
-    NOISE_LEVELS = evaluate_utils.NOISE_CHOICES
+    NOISE_LEVELS = evaluate.NOISE_CHOICES
 
     # DQN settings
     DQN_EPISODES = 600
@@ -265,7 +265,7 @@ def main():
     if ALGO not in {"dqn", "ppo"}:
         raise ValueError(f"Unsupported ALGO: {ALGO}")
     for noise in NOISE_LEVELS:
-        if noise not in evaluate_utils.NOISE_CHOICES:
+        if noise not in evaluate.NOISE_CHOICES:
             raise ValueError(f"Unsupported NOISE: {noise}")
 
     # Reproducibility
@@ -286,7 +286,7 @@ def main():
         random.seed(run_seed)
         np.random.seed(run_seed)
         torch.manual_seed(run_seed)
-        evaluate_utils.OBSERVATION_NOISE_RNG = np.random.default_rng(run_seed)
+        evaluate.OBSERVATION_NOISE_RNG = np.random.default_rng(run_seed)
 
         env = make_env(ENV_NAME, run_seed)
 

@@ -177,9 +177,9 @@ def parse_args():
     parser.add_argument("--algo", default="dqn", choices=["dqn", "ppo"])
     # parser.add_argument("-c", "--checkpoint", default="weights/dqn/model_none.pt", help="Path to saved model .pt file")
     parser.add_argument("--env", default="LunarLander-v3")
-    parser.add_argument("--episodes", type=int, default=5)
-    parser.add_argument("--render", default="mp4", choices=RENDER_CHOICES, help="Render mode")
-    parser.add_argument("--noise", default="none", choices=NOISE_CHOICES, help="Observation noise mode")
+    parser.add_argument("--episodes", type=int, default=100)
+    parser.add_argument("--render", default="none", choices=RENDER_CHOICES, help="Render mode")
+    parser.add_argument("--noise", default="level_4", choices=NOISE_CHOICES, help="Observation noise mode")
     parser.add_argument("--seed", type=int, default=0)
     return parser.parse_args()
 
@@ -189,8 +189,9 @@ def main():
 
     args = parse_args()
 
-    # checkpoint = f"weights/{args.algo}/model_{args.noise}.pt"
-    checkpoint = f"weights/{args.algo}/model_none.pt"
+    checkpoint = f"weights/{args.algo}/model_{args.noise}.pt"
+    # checkpoint = f"weights/{args.algo}/model_level_1.pt"
+    # checkpoint = f"weights/{args.algo}/model_none.pt"
 
     device = get_device()
     OBSERVATION_NOISE_RNG = np.random.default_rng(args.seed)
